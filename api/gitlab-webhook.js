@@ -96,12 +96,30 @@ module.exports = async (req, res) => {
 
         let parsedChangelog = rawDescription
             .split("\n")
-            .filter((line) => line.trim().startsWith("-"))
-            .map((line) => `• ${line.trim().substring(1).trim()}`)
+            .filter(line => line.trim().startsWith("-"))
+            .map(line => {
+                // Remove '-'
+                let content = line.trim().substring(1).trim();
+                // Replace Jira keys with MarkdownV2 links (escape only the key)
+                content = content.replace(/([A-Z]+-\d+)/gi, match => {
+                    const url = `https://bsdesk.atlassian.net/browse/${match}`;
+                    return `[${escapeMDV2(match)}](${url})`;
+                });
+                // Escape the rest of the line, except for links
+                // To keep it simple, we assume only one Jira key per line (common case)
+                // If there is a link, split and escape only non-link parts
+                const linkMatch = content.match(/\[.+?\]\(.+?\)/);
+                if (linkMatch) {
+                    const [before, after] = content.split(linkMatch[0]);
+                    return `• ${escapeMDV2(before)}${linkMatch[0]}${escapeMDV2(after)}`;
+                } else {
+                    return `• ${escapeMDV2(content)}`;
+                }
+            })
             .join("\n");
 
-        parsedChangelog = convertJiraKeysToLinks(parsedChangelog);
-        parsedChangelog = escapeMDV2(parsedChangelog);
+        // parsedChangelog = convertJiraKeysToLinks(parsedChangelog);
+        // parsedChangelog = escapeMDV2(parsedChangelog);
 
         let msg = `📦 *Project:* ${escapeMDV2(project)}
 🔀 *Merged:* \`${escapeMDV2(
@@ -118,6 +136,7 @@ module.exports = async (req, res) => {
         }
 
         msg += `
+        
 ${escapeMDV2("#deploy_master")}  \n👥 @Gefest3D @dee3xy @dmtrbk @OstretsovIvan`;
 
         console.log("✅ Merge request message:", msg);
