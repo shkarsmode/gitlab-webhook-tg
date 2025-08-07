@@ -7,6 +7,8 @@ module.exports = async (req, res) => {
 
     const payload = req.body;
 
+    console.log(payload);
+
     const BOT_TOKEN = process.env.BOT_TOKEN;
     const CHAT_ID = process.env.CHAT_ID;
 
