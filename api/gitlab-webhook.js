@@ -1,12 +1,13 @@
 const axios = require("axios");
 
-// --- Main handler ---
 module.exports = async (req, res) => {
     if (req.method !== "POST") {
         return res.status(405).send("Method Not Allowed");
     }
 
     const payload = req.body;
+    console.log(payload);
+
     const BOT_TOKEN = process.env.BOT_TOKEN;
     const CHAT_ID = process.env.CHAT_ID;
 
@@ -15,7 +16,17 @@ module.exports = async (req, res) => {
         return res.status(500).send("Missing env variables");
     }
 
-    // === ✅ 1. Successful Deploy job ===
+    const escapeMDV2 = (text = "") =>
+        text.replace(/([_\-*\[\]()~`>#+=|{}.!\\])/g, "\\$1");
+
+    const convertJiraKeysToLinks = (text) => {
+        return text.replace(/([A-Z]+-\d+)/g, (match) => {
+            const url = `https://bsdesk.atlassian.net/browse/${match}`;
+            return `[${match}](${url})`;
+        });
+    };
+
+    // === ✅ 1. Catch successful final Deploy job ===
     const isFinalDeploy =
         payload?.object_kind === "build" &&
         payload?.build_name === "Deploy" &&
@@ -36,11 +47,11 @@ module.exports = async (req, res) => {
         const pipelineUrl = `${payload.project?.web_url}/-/pipelines/${payload.pipeline_id}`;
 
         let message = `🚀 *Deployment Finished*
-📦 *Project:* ${escapeMD(projectName)}
-🌿 *Branch:* \`${branch}\`
+📦 *Project:* ${escapeMDV2(projectName)}
+🌿 *Branch:* \`${escapeMDV2(branch)}\`
 🔢 *Commit:* \`${sha}\`
-🧠 *By:* ${escapeMD(committer)}
-📝 *Message:* ${escapeMD(commitMsg)}
+🧠 *By:* ${escapeMDV2(committer)}
+📝 *Message:* ${escapeMDV2(commitMsg)}
 ⏱️ *Duration:* ${duration}s
 🔗 [Open pipeline](${pipelineUrl})`;
 
@@ -53,8 +64,7 @@ module.exports = async (req, res) => {
         if (isDeployToMaster) {
             message += `
 
-#deploy_master  
-👥 @Gefest3D @dee3xy @dmtrbk @OstretsovIvan`;
+#deploy_master  \n👥 @Gefest3D @dee3xy @dmtrbk @OstretsovIvan`;
         }
 
         console.log("✅ Deployment message:", message);
@@ -62,50 +72,54 @@ module.exports = async (req, res) => {
         return res.status(200).send("Deploy processed");
     }
 
-    // === ✅ 2. Merge MR: develop → master or master → staging-cloud ===
-    const isMRMergeToMasterOrStaging =
+    // === ✅ 2. Catch Merge Request (develop → master) or (master → staging-cloud) ===
+    const isMRMergeSpecial =
         payload?.object_kind === "merge_request" &&
         payload?.object_attributes?.state === "merged" &&
         payload?.project?.path_with_namespace ===
             "boosteroid-web/boosteroid-webclient" &&
-        ((payload?.object_attributes?.source_branch === "develop" &&
-            payload?.object_attributes?.target_branch === "master") ||
-            (payload?.object_attributes?.source_branch === "master" &&
-                payload?.object_attributes?.target_branch === "staging-cloud"));
+        [
+            ["develop", "master"],
+            ["master", "staging-cloud"],
+        ].some(
+            ([from, to]) =>
+                payload.object_attributes.source_branch === from &&
+                payload.object_attributes.target_branch === to
+        );
 
-    if (isMRMergeToMasterOrStaging) {
+    if (isMRMergeSpecial) {
         const mrTitle = payload.object_attributes.title;
         const mrAuthor = payload.user?.name;
         const project = payload.project.name;
         const url = payload.object_attributes.url;
         const rawDescription = payload.object_attributes.description || "";
 
-        const fromBranch = payload.object_attributes.source_branch;
-        const toBranch = payload.object_attributes.target_branch;
-
-        const parsedChangelog = rawDescription
+        let parsedChangelog = rawDescription
             .split("\n")
             .filter((line) => line.trim().startsWith("-"))
-            .map((line) => `• ${escapeMD(line.trim().substring(1).trim())}`)
+            .map((line) => `• ${line.trim().substring(1).trim()}`)
             .join("\n");
 
-        let msg = `📦 *Project:* ${escapeMD(project)}
-🔀 *Merged:* \`${fromBranch}\` → \`${toBranch}\`
-🧠 *By:* ${escapeMD(mrAuthor)}
-📝 *Title:* ${escapeMD(mrTitle)}
+        parsedChangelog = convertJiraKeysToLinks(parsedChangelog);
+        parsedChangelog = escapeMDV2(parsedChangelog);
+
+        let msg = `📦 *Project:* ${escapeMDV2(project)}
+🔀 *Merged:* \`${escapeMDV2(
+            payload.object_attributes.source_branch
+        )}\` → \`${escapeMDV2(payload.object_attributes.target_branch)}\`
+🧠 *By:* ${escapeMDV2(mrAuthor)}
+📝 *Title:* ${escapeMDV2(mrTitle)}
 🔗 [View MR](${url})`;
 
         if (parsedChangelog) {
             msg += `
 
-🧾 *Changelog:*
-${parsedChangelog}`;
+🧾 *Changelog:*\n${parsedChangelog}`;
         }
 
         msg += `
 
-#deploy_master  
-👥 @Gefest3D @dee3xy @dmtrbk @OstretsovIvan`;
+#deploy_master  \n👥 @Gefest3D @dee3xy @dmtrbk @OstretsovIvan`;
 
         console.log("✅ Merge request message:", msg);
         await sendToTelegram(msg, BOT_TOKEN, CHAT_ID);
@@ -121,7 +135,7 @@ async function sendToTelegram(text, token, chatId) {
         await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
             chat_id: chatId,
             text,
-            parse_mode: "Markdown",
+            parse_mode: "MarkdownV2",
             disable_web_page_preview: true,
         });
     } catch (err) {
@@ -130,27 +144,4 @@ async function sendToTelegram(text, token, chatId) {
             err.response?.data || err.message
         );
     }
-}
-
-// --- Markdown escaper ---
-function escapeMD(text = "") {
-    return text
-        .replace(/_/g, "\\_")
-        .replace(/\*/g, "\\*")
-        .replace(/\[/g, "\\[")
-        .replace(/\]/g, "\\]")
-        .replace(/\(/g, "\\(")
-        .replace(/\)/g, "\\)")
-        .replace(/~/g, "\\~")
-        .replace(/`/g, "\\`")
-        .replace(/>/g, "\\>")
-        .replace(/#/g, "\\#")
-        .replace(/\+/g, "\\+")
-        .replace(/-/g, "\\-")
-        .replace(/=/g, "\\=")
-        .replace(/\|/g, "\\|")
-        .replace(/{/g, "\\{")
-        .replace(/}/g, "\\}")
-        .replace(/\./g, "\\.")
-        .replace(/!/g, "\\!");
 }
