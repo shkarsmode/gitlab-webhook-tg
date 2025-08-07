@@ -68,22 +68,41 @@ module.exports = async (req, res) => {
     const isMRMergeToMaster =
         payload?.object_kind === "merge_request" &&
         payload?.object_attributes?.state === "merged" &&
-        payload?.object_attributes?.source_branch === "develop" &&
-        payload?.object_attributes?.target_branch === "master" &&
         payload?.project?.path_with_namespace ===
-            "boosteroid-web/boosteroid-webclient";
+            "boosteroid-web/boosteroid-webclient" &&
+        ((payload?.object_attributes?.source_branch === "develop" &&
+            payload?.object_attributes?.target_branch === "master") ||
+            // ✅ Test: master → staging-cloud
+            (payload?.object_attributes?.source_branch === "master" &&
+                payload?.object_attributes?.target_branch === "staging-cloud"));
 
     if (isMRMergeToMaster) {
-        const mrTitle = payload.object_attributes.title;
-        const mrAuthor = payload.user?.name;
-        const project = payload.project.name;
-        const url = payload.object_attributes.url;
+       const mrTitle = payload.object_attributes.title;
+       const mrAuthor = payload.user?.name;
+       const project = payload.project.name;
+       const url = payload.object_attributes.url;
+       const rawDescription = payload.object_attributes.description || "";
 
-        const msg = `📦 *Project:* ${project}
+       const parsedChangelog = rawDescription
+           .split("\n")
+           .filter((line) => line.trim().startsWith("-"))
+           .map((line) => `• ${line.trim().substring(1).trim()}`) // убираем "-", добавляем точку
+           .join("\n");
+
+       let msg = `📦 *Project:* ${project}
 🔀 *Merged:* \`develop\` → \`master\`
 🧠 *By:* ${mrAuthor}
 📝 *Title:* ${mrTitle}
-🔗 [View MR](${url})
+🔗 [View MR](${url})`;
+
+       if (parsedChangelog) {
+           msg += `
+
+🧾 *Changelog:*
+${parsedChangelog}`;
+       }
+
+       msg += `
 
 #deploy_master  
 👥 @Gefest3D @dee3xy @dmtrbk @OstretsovIvan`;
