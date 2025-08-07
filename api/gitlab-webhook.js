@@ -6,7 +6,6 @@ module.exports = async (req, res) => {
     }
 
     const payload = req.body;
-
     console.log(payload);
 
     const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -38,19 +37,17 @@ module.exports = async (req, res) => {
         const pipelineUrl = `${payload.project?.web_url}/-/pipelines/${payload.pipeline_id}`;
 
         let message = `🚀 *Deployment Finished*
-📦 *Project:* ${projectName}
+📦 *Project:* ${escapeMarkdown(projectName)}
 🌿 *Branch:* \`${branch}\`
 🔢 *Commit:* \`${sha}\`
-🧠 *By:* ${committer}
-📝 *Message:* ${commitMsg}
+🧠 *By:* ${escapeMarkdown(committer)}
+📝 *Message:* ${escapeMarkdown(commitMsg)}
 ⏱️ *Duration:* ${duration}s
 🔗 [Open pipeline](${pipelineUrl})`;
 
         const isDeployToMaster =
             fullProjectName === "boosteroid-web/boosteroid-webclient" &&
-            /Merge branch 'develop' into 'master'/.test(
-                payload.commit?.message || ""
-            );
+            /Merge branch 'develop' into 'master'/.test(commitMsg);
 
         if (isDeployToMaster) {
             message += `
@@ -64,45 +61,52 @@ module.exports = async (req, res) => {
         return res.status(200).send("Deploy processed");
     }
 
-    // === ✅ 2. Catch Merge from develop → master ===
-    const isMRMergeToMaster =
+    // === ✅ 2. Catch Merge Requests ===
+    const isMRMerge =
         payload?.object_kind === "merge_request" &&
         payload?.object_attributes?.state === "merged" &&
         payload?.project?.path_with_namespace ===
             "boosteroid-web/boosteroid-webclient" &&
+        // main prod release
         ((payload?.object_attributes?.source_branch === "develop" &&
             payload?.object_attributes?.target_branch === "master") ||
-            // ✅ Test: master → staging-cloud
+            // staging-cloud check
             (payload?.object_attributes?.source_branch === "master" &&
                 payload?.object_attributes?.target_branch === "staging-cloud"));
 
-    if (isMRMergeToMaster) {
-       const mrTitle = payload.object_attributes.title;
-       const mrAuthor = payload.user?.name;
-       const project = payload.project.name;
-       const url = payload.object_attributes.url;
-       const rawDescription = payload.object_attributes.description || "";
+    if (isMRMerge) {
+        const mrTitle = payload.object_attributes.title;
+        const mrAuthor = payload.user?.name;
+        const project = payload.project.name;
+        const url = payload.object_attributes.url;
+        const rawDescription = payload.object_attributes.description || "";
 
-       const parsedChangelog = rawDescription
-           .split("\n")
-           .filter((line) => line.trim().startsWith("-"))
-           .map((line) => `• ${line.trim().substring(1).trim()}`) // убираем "-", добавляем точку
-           .join("\n");
+        const parsedChangelog = rawDescription
+            .split("\n")
+            .filter((line) => line.trim().startsWith("-"))
+            .map((line) => {
+                const clean = escapeMarkdown(line.trim().substring(1).trim());
+                return `• ${replaceJiraKeysWithLinks(clean)}`;
+            })
+            .join("\n");
 
-       let msg = `📦 *Project:* ${project}
-🔀 *Merged:* \`develop\` → \`master\`
-🧠 *By:* ${mrAuthor}
-📝 *Title:* ${mrTitle}
+        const from = payload.object_attributes.source_branch;
+        const to = payload.object_attributes.target_branch;
+
+        let msg = `📦 *Project:* ${escapeMarkdown(project)}
+🔀 *Merged:* \`${from}\` → \`${to}\`
+🧠 *By:* ${escapeMarkdown(mrAuthor)}
+📝 *Title:* ${escapeMarkdown(mrTitle)}
 🔗 [View MR](${url})`;
 
-       if (parsedChangelog) {
-           msg += `
+        if (parsedChangelog) {
+            msg += `
 
 🧾 *Changelog:*
 ${parsedChangelog}`;
-       }
+        }
 
-       msg += `
+        msg += `
 
 #deploy_master  
 👥 @Gefest3D @dee3xy @dmtrbk @OstretsovIvan`;
@@ -115,7 +119,20 @@ ${parsedChangelog}`;
     return res.status(200).send("Ignored");
 };
 
-// --- Telegram helper ---
+// --- Markdown escaping helper ---
+function escapeMarkdown(text = "") {
+    return text.replace(/([_*\[\]()~`>#+=|{}.!-])/g, "\\$1");
+}
+
+// --- Replace CLOUD-123 links ---
+function replaceJiraKeysWithLinks(text = "") {
+    return text.replace(
+        /CLOUD-(\d+)/g,
+        `[CLOUD-$1](https://jira.boosteroid.com/browse/CLOUD-$1)`
+    );
+}
+
+// --- Telegram sender ---
 async function sendToTelegram(text, token, chatId) {
     try {
         await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -125,6 +142,9 @@ async function sendToTelegram(text, token, chatId) {
             disable_web_page_preview: true,
         });
     } catch (err) {
-        console.error("❌ Telegram send error:", err.message);
+        console.error(
+            "❌ Telegram send error:",
+            err.response?.data || err.message
+        );
     }
 }
