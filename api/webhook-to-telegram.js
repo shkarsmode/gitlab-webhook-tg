@@ -1,6 +1,10 @@
 const axios = require("axios");
 
 module.exports = async (req, res) => {
+    if (req.method === "GET") {
+        res.setHeader("Content-Type", "text/html");
+        return res.status(200).send(`<!DOCTYPE html><html><head><title>Hello</title></head><body><h1>Hello, World!</h1></body></html>`);
+    }
     if (req.method !== "POST") {
         return res.status(405).send("Method Not Allowed");
     }
