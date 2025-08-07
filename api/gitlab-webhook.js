@@ -72,7 +72,7 @@ module.exports = async (req, res) => {
         return res.status(200).send("Deploy processed");
     }
 
-    // === ✅ 2. Catch Merge Request (develop → master) or (master → staging-cloud) ===
+    // === ✅ 2. Catch Merge Request (develop → master) ===
     const isMRMergeSpecial =
         payload?.object_kind === "merge_request" &&
         payload?.object_attributes?.state === "merged" &&
@@ -80,7 +80,6 @@ module.exports = async (req, res) => {
             "boosteroid-web/boosteroid-webclient" &&
         [
             ["develop", "master"],
-            ["master", "staging-cloud"],
         ].some(
             ([from, to]) =>
                 payload.object_attributes.source_branch === from &&
