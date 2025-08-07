@@ -42,6 +42,11 @@ console.log(text);
     }
 });
 
+app.get("/test", (req, res) => {
+    res.send(`<!DOCTYPE html><html><head><title>Hello</title></head><body><h1>Hello, World!</h1></body></html>`);
+});
+
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () =>
     console.log(`🚀 Webhook proxy listening on port ${PORT}`)
