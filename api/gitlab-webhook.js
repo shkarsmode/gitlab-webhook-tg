@@ -118,8 +118,7 @@ module.exports = async (req, res) => {
         }
 
         msg += `
-
-#deploy_master  \n👥 @Gefest3D @dee3xy @dmtrbk @OstretsovIvan`;
+${escapeMDV2("#deploy_master")}  \n👥 @Gefest3D @dee3xy @dmtrbk @OstretsovIvan`;
 
         console.log("✅ Merge request message:", msg);
         await sendToTelegram(msg, BOT_TOKEN, CHAT_ID);
