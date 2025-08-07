@@ -1,9 +1,0 @@
-{
-    "version": 2,
-    "builds": [
-        {
-            "src": "api/gitlab-webhook.js",
-            "use": "@vercel/node"
-        }
-    ]
-}

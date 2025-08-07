@@ -10,7 +10,6 @@ module.exports = async (req, res) => {
     }
 
     const payload = req.body;
-
     const branch = payload.ref?.split("/")?.pop();
     const project = payload.project?.name;
     const username = payload.user_name;
