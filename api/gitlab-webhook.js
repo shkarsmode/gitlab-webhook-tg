@@ -1,13 +1,12 @@
 const axios = require("axios");
 
+// --- Main handler ---
 module.exports = async (req, res) => {
     if (req.method !== "POST") {
         return res.status(405).send("Method Not Allowed");
     }
 
     const payload = req.body;
-    console.log(payload);
-
     const BOT_TOKEN = process.env.BOT_TOKEN;
     const CHAT_ID = process.env.CHAT_ID;
 
@@ -16,7 +15,7 @@ module.exports = async (req, res) => {
         return res.status(500).send("Missing env variables");
     }
 
-    // === ✅ 1. Catch successful final Deploy job ===
+    // === ✅ 1. Successful Deploy job ===
     const isFinalDeploy =
         payload?.object_kind === "build" &&
         payload?.build_name === "Deploy" &&
@@ -37,17 +36,19 @@ module.exports = async (req, res) => {
         const pipelineUrl = `${payload.project?.web_url}/-/pipelines/${payload.pipeline_id}`;
 
         let message = `🚀 *Deployment Finished*
-📦 *Project:* ${escapeMarkdown(projectName)}
+📦 *Project:* ${escapeMD(projectName)}
 🌿 *Branch:* \`${branch}\`
 🔢 *Commit:* \`${sha}\`
-🧠 *By:* ${escapeMarkdown(committer)}
-📝 *Message:* ${escapeMarkdown(commitMsg)}
+🧠 *By:* ${escapeMD(committer)}
+📝 *Message:* ${escapeMD(commitMsg)}
 ⏱️ *Duration:* ${duration}s
 🔗 [Open pipeline](${pipelineUrl})`;
 
         const isDeployToMaster =
             fullProjectName === "boosteroid-web/boosteroid-webclient" &&
-            /Merge branch 'develop' into 'master'/.test(commitMsg);
+            /Merge branch 'develop' into 'master'/.test(
+                payload.commit?.message || ""
+            );
 
         if (isDeployToMaster) {
             message += `
@@ -61,42 +62,37 @@ module.exports = async (req, res) => {
         return res.status(200).send("Deploy processed");
     }
 
-    // === ✅ 2. Catch Merge Requests ===
-    const isMRMerge =
+    // === ✅ 2. Merge MR: develop → master or master → staging-cloud ===
+    const isMRMergeToMasterOrStaging =
         payload?.object_kind === "merge_request" &&
         payload?.object_attributes?.state === "merged" &&
         payload?.project?.path_with_namespace ===
             "boosteroid-web/boosteroid-webclient" &&
-        // main prod release
         ((payload?.object_attributes?.source_branch === "develop" &&
             payload?.object_attributes?.target_branch === "master") ||
-            // staging-cloud check
             (payload?.object_attributes?.source_branch === "master" &&
                 payload?.object_attributes?.target_branch === "staging-cloud"));
 
-    if (isMRMerge) {
+    if (isMRMergeToMasterOrStaging) {
         const mrTitle = payload.object_attributes.title;
         const mrAuthor = payload.user?.name;
         const project = payload.project.name;
         const url = payload.object_attributes.url;
         const rawDescription = payload.object_attributes.description || "";
 
+        const fromBranch = payload.object_attributes.source_branch;
+        const toBranch = payload.object_attributes.target_branch;
+
         const parsedChangelog = rawDescription
             .split("\n")
             .filter((line) => line.trim().startsWith("-"))
-            .map((line) => {
-                const clean = escapeMarkdown(line.trim().substring(1).trim());
-                return `• ${replaceJiraKeysWithLinks(clean)}`;
-            })
+            .map((line) => `• ${escapeMD(line.trim().substring(1).trim())}`)
             .join("\n");
 
-        const from = payload.object_attributes.source_branch;
-        const to = payload.object_attributes.target_branch;
-
-        let msg = `📦 *Project:* ${escapeMarkdown(project)}
-🔀 *Merged:* \`${from}\` → \`${to}\`
-🧠 *By:* ${escapeMarkdown(mrAuthor)}
-📝 *Title:* ${escapeMarkdown(mrTitle)}
+        let msg = `📦 *Project:* ${escapeMD(project)}
+🔀 *Merged:* \`${fromBranch}\` → \`${toBranch}\`
+🧠 *By:* ${escapeMD(mrAuthor)}
+📝 *Title:* ${escapeMD(mrTitle)}
 🔗 [View MR](${url})`;
 
         if (parsedChangelog) {
@@ -119,20 +115,7 @@ ${parsedChangelog}`;
     return res.status(200).send("Ignored");
 };
 
-// --- Markdown escaping helper ---
-function escapeMarkdown(text = "") {
-    return text.replace(/([_*\[\]()~`>#+=|{}.!-])/g, "\\$1");
-}
-
-// --- Replace CLOUD-123 links ---
-function replaceJiraKeysWithLinks(text = "") {
-    return text.replace(
-        /CLOUD-(\d+)/g,
-        `[CLOUD-$1](https://jira.boosteroid.com/browse/CLOUD-$1)`
-    );
-}
-
-// --- Telegram sender ---
+// --- Telegram helper ---
 async function sendToTelegram(text, token, chatId) {
     try {
         await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -147,4 +130,27 @@ async function sendToTelegram(text, token, chatId) {
             err.response?.data || err.message
         );
     }
+}
+
+// --- Markdown escaper ---
+function escapeMD(text = "") {
+    return text
+        .replace(/_/g, "\\_")
+        .replace(/\*/g, "\\*")
+        .replace(/\[/g, "\\[")
+        .replace(/\]/g, "\\]")
+        .replace(/\(/g, "\\(")
+        .replace(/\)/g, "\\)")
+        .replace(/~/g, "\\~")
+        .replace(/`/g, "\\`")
+        .replace(/>/g, "\\>")
+        .replace(/#/g, "\\#")
+        .replace(/\+/g, "\\+")
+        .replace(/-/g, "\\-")
+        .replace(/=/g, "\\=")
+        .replace(/\|/g, "\\|")
+        .replace(/{/g, "\\{")
+        .replace(/}/g, "\\}")
+        .replace(/\./g, "\\.")
+        .replace(/!/g, "\\!");
 }
