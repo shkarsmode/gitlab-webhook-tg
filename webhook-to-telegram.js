@@ -5,13 +5,12 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const CHAT_ID = process.env.CHAT_ID;
+// const BOT_TOKEN = process.env.BOT_TOKEN;
+// const CHAT_ID = process.env.CHAT_ID;
 
 app.post("/gitlab-webhook", async (req, res) => {
     const payload = req.body;
 
-    // Пример фильтра: только успешный деплой (можешь доработать)
     const branch = payload.ref?.split("/")?.pop();
     const project = payload.project?.name;
     const username = payload.user_name;
@@ -25,21 +24,21 @@ console.log(req);
 console.log(req.body);
 console.log(text);
 
-    try {
-        await axios.post(
-            `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
-            {
-                chat_id: CHAT_ID,
-                text,
-                parse_mode: "Markdown",
-            }
-        );
+    // try {
+    //     await axios.post(
+    //         `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
+    //         {
+    //             chat_id: CHAT_ID,
+    //             text,
+    //             parse_mode: "Markdown",
+    //         }
+    //     );
 
-        res.sendStatus(200);
-    } catch (err) {
-        console.error("Ошибка при отправке в Telegram:", err.message);
-        res.sendStatus(500);
-    }
+    //     res.sendStatus(200);
+    // } catch (err) {
+    //     console.error("Ошибка при отправке в Telegram:", err.message);
+    //     res.sendStatus(500);
+    // }
 });
 
 app.get("/test", (req, res) => {
