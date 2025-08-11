@@ -33,7 +33,13 @@ module.exports = async (req, res) => {
         payload?.build_stage === "Deploy" &&
         payload?.build_status === "success";
 
-    if (isFinalDeploy) {
+    // Only allow deploys from master to production-cloud
+    const isDeployMasterToProduction =
+        isFinalDeploy &&
+        payload?.ref?.split("/").pop() === "master" &&
+        /Merge branch 'master' into 'production-cloud'/.test(payload.commit?.message || "");
+
+    if (isDeployMasterToProduction) {
         const projectName =
             payload.project_name || payload.project?.name || "Unknown Project";
         const fullProjectName = payload.project?.path_with_namespace || "";
@@ -54,18 +60,6 @@ module.exports = async (req, res) => {
 📝 *Message:* ${escapeMDV2(commitMsg)}
 ⏱️ *Duration:* ${duration}s
 🔗 [Open pipeline](${pipelineUrl})`;
-
-        const isDeployToMaster =
-            fullProjectName === "boosteroid-web/boosteroid-webclient" &&
-            /Merge branch 'develop' into 'master'/.test(
-                payload.commit?.message || ""
-            );
-
-        if (isDeployToMaster) {
-            message += `
-
-#deploy_master  \n👥 @Gefest3D @dee3xy @dmtrbk @OstretsovIvan`;
-        }
 
         console.log("✅ Deployment message:", message);
         await sendToTelegram(message, BOT_TOKEN, CHAT_ID);
