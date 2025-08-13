@@ -36,7 +36,6 @@ module.exports = async (req, res) => {
     // Only allow deploys from master to production-cloud
     const isDeployMasterToProduction =
         isFinalDeploy &&
-        payload?.ref?.split("/").pop() === "master" &&
         /Merge branch 'master' into 'production-cloud'/.test(payload.commit?.message || "");
 
     if (isDeployMasterToProduction) {
