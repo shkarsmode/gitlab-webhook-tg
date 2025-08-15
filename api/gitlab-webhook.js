@@ -85,6 +85,10 @@ module.exports = async (req, res) => {
         const project = payload.project.name;
         const url = payload.object_attributes.url;
         const rawDescription = payload.object_attributes.description || "";
+        const match = url.match(/merge_requests\/(\d+)/);
+        const mrNumber = escapeMDV2(match ? "#" + match[1] : "Unknown");
+
+        const hyperlink = `🔗 [View MR ${mrNumber}](${url})`;
 
         let parsedChangelog = rawDescription
             .split("\n")
@@ -119,7 +123,7 @@ module.exports = async (req, res) => {
         )}\` → \`${escapeMDV2(payload.object_attributes.target_branch)}\`
 🧠 *By:* ${escapeMDV2(mrAuthor)}
 📝 *Title:* ${escapeMDV2(mrTitle)}
-🔗 [View MR](${url})`;
+${hyperlink}`;
 
         if (parsedChangelog) {
             msg += `
