@@ -1,12 +1,25 @@
 const axios = require("axios");
+const crypto = require("crypto");
+
+// GitLab sends the hook's "Secret token" in X-Gitlab-Token. Without checking it, anyone on the
+// internet could post fake deploy messages — with links of their choosing — into the team chat.
+// Both sides are hashed first so the comparison is constant-time whatever the lengths.
+function fromGitLab(req) {
+    const expected = process.env.GITLAB_WEBHOOK_SECRET || "";
+    if (!expected) return false;
+    const digest = (s) => crypto.createHash("sha256").update(String(s)).digest();
+    return crypto.timingSafeEqual(digest(req.headers["x-gitlab-token"] || ""), digest(expected));
+}
 
 module.exports = async (req, res) => {
     if (req.method !== "POST") {
         return res.status(405).send("Method Not Allowed");
     }
+    if (!fromGitLab(req)) {
+        return res.status(401).send("Unauthorized");
+    }
 
     const payload = req.body;
-    console.log(payload);
 
     const BOT_TOKEN = process.env.BOT_TOKEN;
     const CHAT_ID = process.env.CHAT_ID;
