@@ -1,0 +1,48 @@
+# The Vercel project lives in the Boosteroid team, which this repo's personal GitHub account is not a
+# member of, so Vercel's Git integration can't deploy it. Instead a push to main deploys from here with
+# the team's token. It uploads a `git archive` of the commit (exactly the committed files, without .git)
+# and Vercel builds it the same way it built Git deployments.
+name: Deploy to Vercel
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      production:
+        description: Deploy to production (unchecked makes a preview)
+        type: boolean
+        default: true
+
+concurrency:
+  group: vercel-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VERCEL_ORG_ID: team_si3FbWhAoXtJCE5YrsLjGVTa
+      VERCEL_PROJECT_ID: prj_aLeiYmGfsVztsnAOV15RSs72UTCx
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Export the commit
+        run: |
+          mkdir -p "$RUNNER_TEMP/site"
+          git archive HEAD | tar -x -C "$RUNNER_TEMP/site"
+          rm -rf "$RUNNER_TEMP/site/.github"
+
+      - name: Deploy
+        run: >-
+          npx --yes vercel@58.4.4 deploy
+          --cwd "$RUNNER_TEMP/site"
+          --token "$VERCEL_TOKEN"
+          --meta commit=${{ github.sha }}
+          ${{ (github.event_name == 'push' || inputs.production) && '--prod' || '' }}
